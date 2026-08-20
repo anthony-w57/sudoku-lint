@@ -1,0 +1,8 @@
+[package]
+name = "sudoku-lint"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "A linter for sudoku board files that reports problems with line numbers."
+
+[dependencies]
