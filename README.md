@@ -61,7 +61,4 @@ for finding in &findings {
 - each character is a digit `1`-`9`, a `.`, or a `0`
 - no digit repeats within a single row
 - no digit repeats within a single column
-
-## What it doesn't check yet
-
-3x3 box duplicates are not checked yet — see the roadmap.
+- no digit repeats within a single 3x3 box
