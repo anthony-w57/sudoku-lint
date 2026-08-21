@@ -60,7 +60,8 @@ for finding in &findings {
 - each row is exactly nine characters
 - each character is a digit `1`-`9`, a `.`, or a `0`
 - no digit repeats within a single row
+- no digit repeats within a single column
 
 ## What it doesn't check yet
 
-Column and 3x3 box duplicates are not checked yet — see the roadmap.
+3x3 box duplicates are not checked yet — see the roadmap.

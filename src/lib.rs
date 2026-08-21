@@ -89,19 +89,41 @@ pub fn find_duplicates(row: &Row) -> Vec<u8> {
     duplicates
 }
 
+/// Returns `(row index, column, digit)` for every cell that repeats a digit
+/// already seen earlier in the same column. The row index is a position
+/// within `rows`, not a source line number, since this works on parsed rows
+/// alone.
+pub fn find_column_duplicates(rows: &[Row]) -> Vec<(usize, usize, u8)> {
+    let mut duplicates = Vec::new();
+    for col in 0..SIZE {
+        let mut seen = [false; SIZE + 1];
+        for (row_idx, row) in rows.iter().enumerate() {
+            if let Some(digit) = row[col] {
+                let d = digit as usize;
+                if seen[d] {
+                    duplicates.push((row_idx, col, digit));
+                } else {
+                    seen[d] = true;
+                }
+            }
+        }
+    }
+    duplicates
+}
+
 /// Lints the text of a sudoku board file and returns every finding, ordered
 /// by line number. Pure: it does no I/O and only reads the string it is
 /// given, which is what keeps it easy to unit test.
 pub fn lint(source: &str) -> Vec<Finding> {
     let mut findings = Vec::new();
-    let mut row_count = 0usize;
+    let mut rows: Vec<(usize, Row)> = Vec::new();
 
     for (idx, line) in source.lines().enumerate() {
         let line_number = idx + 1;
         if is_ignorable_line(line) {
             continue;
         }
-        if row_count == SIZE {
+        if rows.len() == SIZE {
             findings.push(Finding::error(
                 line_number,
                 "unexpected extra row, board already has 9",
@@ -117,20 +139,33 @@ pub fn lint(source: &str) -> Vec<Finding> {
                         format!("duplicate digit '{}' in row", digit),
                     ));
                 }
-                row_count += 1;
+                rows.push((line_number, row));
             }
             Err(message) => findings.push(Finding::error(line_number, message)),
         }
     }
 
-    if row_count < SIZE {
+    if rows.len() < SIZE {
         let last_line = source.lines().count().max(1);
         findings.push(Finding::error(
             last_line,
-            format!("expected {} rows, found {}", SIZE, row_count),
+            format!("expected {} rows, found {}", SIZE, rows.len()),
         ));
     }
 
+    let parsed_rows: Vec<Row> = rows.iter().map(|(_, row)| *row).collect();
+    for (row_idx, col, digit) in find_column_duplicates(&parsed_rows) {
+        let line_number = rows[row_idx].0;
+        findings.push(Finding::error(
+            line_number,
+            format!("duplicate digit '{}' in column {}", digit, col + 1),
+        ));
+    }
+
+    // Row findings and the "wrong row count" finding are already produced in
+    // line order as the source is scanned top to bottom; column findings are
+    // appended afterward and need folding back in to keep that guarantee.
+    findings.sort_by_key(|f| f.line);
     findings
 }
 
@@ -168,6 +203,34 @@ mod tests {
         assert!(find_duplicates(&row).is_empty());
     }
 
+    #[test]
+    fn finds_column_duplicates_across_rows() {
+        let rows: Vec<Row> = [
+            "1........",
+            "1........",
+            ".........",
+            ".........",
+            ".........",
+            ".........",
+            ".........",
+            ".........",
+            ".........",
+        ]
+        .iter()
+        .map(|line| parse_row(line).unwrap())
+        .collect();
+        assert_eq!(find_column_duplicates(&rows), vec![(1, 0, 1)]);
+    }
+
+    #[test]
+    fn no_column_duplicates_in_a_clean_board() {
+        let rows: Vec<Row> = CLEAN_BOARD
+            .lines()
+            .map(|line| parse_row(line).unwrap())
+            .collect();
+        assert!(find_column_duplicates(&rows).is_empty());
+    }
+
     const CLEAN_BOARD: &str = "\
 534678912
 672195348
@@ -187,11 +250,34 @@ mod tests {
 
     #[test]
     fn flags_duplicate_and_reports_its_line() {
+        // Changing this one cell duplicates '3' both in row 1 and, since the
+        // board is a complete valid solution, in column 1 against row 9.
         let board = CLEAN_BOARD.replacen("534678912", "334678912", 1);
         let findings = lint(&board);
-        assert_eq!(findings.len(), 1);
+        assert_eq!(findings.len(), 2);
         assert_eq!(findings[0].line, 1);
-        assert!(findings[0].message.contains("duplicate digit '3'"));
+        assert!(findings[0].message.contains("duplicate digit '3' in row"));
+        assert_eq!(findings[1].line, 9);
+        assert!(findings[1].message.contains("duplicate digit '3' in column"));
+    }
+
+    #[test]
+    fn flags_column_duplicate_without_row_duplicate() {
+        let board = "\
+1........
+1........
+.........
+.........
+.........
+.........
+.........
+.........
+.........
+";
+        let findings = lint(board);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].line, 2);
+        assert!(findings[0].message.contains("duplicate digit '1' in column 1"));
     }
 
     #[test]
