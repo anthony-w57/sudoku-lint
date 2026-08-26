@@ -39,9 +39,7 @@ const SIZE: usize = 9;
 /// A parsed row: `None` for an empty cell, `Some(1..=9)` for a filled one.
 pub type Row = [Option<u8>; SIZE];
 
-/// A line is skipped when counting board rows if it is blank or starts with
-/// '#'. This lets a board file carry a header comment or spacing between
-/// puzzles without confusing the row count.
+/// True for a line that carries no board data: blank, or a `#` comment.
 pub fn is_ignorable_line(line: &str) -> bool {
     let trimmed = line.trim();
     trimmed.is_empty() || trimmed.starts_with('#')
@@ -141,17 +139,43 @@ pub fn find_box_duplicates(rows: &[Row]) -> Vec<(usize, usize, u8)> {
 }
 
 /// Lints the text of a sudoku board file and returns every finding, ordered
-/// by line number. Pure: it does no I/O and only reads the string it is
-/// given, which is what keeps it easy to unit test.
+/// by line number. A file may hold more than one board: a blank line ends
+/// the current board and starts the next, so boards can be batch-checked
+/// from a single file instead of one file per puzzle. Pure: it does no I/O
+/// and only reads the string it is given, which is what keeps it easy to
+/// unit test.
 pub fn lint(source: &str) -> Vec<Finding> {
-    let mut findings = Vec::new();
-    let mut rows: Vec<(usize, Row)> = Vec::new();
+    let mut boards: Vec<Vec<(usize, &str)>> = Vec::new();
+    let mut current: Vec<(usize, &str)> = Vec::new();
 
     for (idx, line) in source.lines().enumerate() {
         let line_number = idx + 1;
-        if is_ignorable_line(line) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if !current.is_empty() {
+                boards.push(std::mem::take(&mut current));
+            }
             continue;
         }
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        current.push((line_number, line));
+    }
+    if !current.is_empty() {
+        boards.push(current);
+    }
+
+    boards.iter().flat_map(|board| lint_board(board)).collect()
+}
+
+/// Lints a single board's non-ignorable lines, given as `(source line
+/// number, text)` pairs.
+fn lint_board(lines: &[(usize, &str)]) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let mut rows: Vec<(usize, Row)> = Vec::new();
+
+    for &(line_number, line) in lines {
         if rows.len() == SIZE {
             findings.push(Finding::error(
                 line_number,
@@ -175,7 +199,7 @@ pub fn lint(source: &str) -> Vec<Finding> {
     }
 
     if rows.len() < SIZE {
-        let last_line = source.lines().count().max(1);
+        let last_line = lines.last().map_or(1, |(line_number, _)| *line_number);
         findings.push(Finding::error(
             last_line,
             format!("expected {} rows, found {}", SIZE, rows.len()),
@@ -205,7 +229,7 @@ pub fn lint(source: &str) -> Vec<Finding> {
     }
 
     // Row findings and the "wrong row count" finding are already produced in
-    // line order as the source is scanned top to bottom; column and box
+    // line order as the board is scanned top to bottom; column and box
     // findings are appended afterward and need folding back in to keep that
     // guarantee.
     findings.sort_by_key(|f| f.line);
@@ -414,5 +438,31 @@ mod tests {
     fn ignores_blank_and_comment_lines() {
         let board = format!("# a puzzle\n\n{}", CLEAN_BOARD);
         assert!(lint(&board).is_empty());
+    }
+
+    #[test]
+    fn lints_each_board_in_a_multi_board_file() {
+        // Second board repeats '3' in the first row.
+        let bad_second_board = CLEAN_BOARD.replacen("534678912", "334678912", 1);
+        let file = format!("{}\n{}", CLEAN_BOARD, bad_second_board);
+        let findings = lint(&file);
+        assert_eq!(findings.len(), 3);
+        // CLEAN_BOARD is 9 lines plus its trailing newline, so the second
+        // board's first row lands on line 11 (line 10 is the blank separator).
+        assert_eq!(findings[0].line, 11);
+        assert!(findings[0].message.contains("duplicate digit '3' in row"));
+        assert_eq!(findings[1].line, 11);
+        assert!(findings[1].message.contains("duplicate digit '3' in 3x3 box"));
+        assert_eq!(findings[2].line, 19);
+        assert!(findings[2].message.contains("duplicate digit '3' in column"));
+    }
+
+    #[test]
+    fn a_short_board_does_not_swallow_the_next_one_in_the_file() {
+        let file = format!("123456789\n\n{}", CLEAN_BOARD);
+        let findings = lint(&file);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].line, 1);
+        assert!(findings[0].message.contains("expected 9 rows, found 1"));
     }
 }

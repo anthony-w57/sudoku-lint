@@ -32,6 +32,29 @@ from that format.
 Nine rows are expected, each exactly nine characters: `1`-`9` for a filled
 cell, `.` or `0` for an empty one.
 
+A file can hold more than one board. A blank line ends the current board and
+starts the next, so a whole batch of puzzles pulled from the same source can
+be checked in one pass:
+
+```
+534678912
+672195348
+198342567
+859761423
+426853791
+713924856
+961537284
+287419635
+345286179
+
+100000000
+020000000
+...
+```
+
+Each board is checked on its own; a problem in one does not affect line
+numbers or findings in another.
+
 ## Usage
 
 ```
@@ -56,7 +79,9 @@ for finding in &findings {
 
 ## What it checks today
 
-- the file has exactly nine board rows (ignoring blank lines and `#` comments)
+- a file may hold multiple boards, separated by blank lines, each checked on
+  its own
+- each board has exactly nine rows (ignoring `#` comments)
 - each row is exactly nine characters
 - each character is a digit `1`-`9`, a `.`, or a `0`
 - no digit repeats within a single row
