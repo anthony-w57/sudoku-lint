@@ -138,6 +138,43 @@ pub fn find_box_duplicates(rows: &[Row]) -> Vec<(usize, usize, u8)> {
     duplicates
 }
 
+/// Renders findings as a JSON array, one object per finding with `line`,
+/// `severity`, and `message` fields. Kept here rather than in `main.rs` so it
+/// stays covered by the same string-in, string-out tests as the rest of the
+/// linter instead of only being exercised by running the binary.
+pub fn findings_to_json(findings: &[Finding]) -> String {
+    let mut out = String::from("[");
+    for (i, finding) in findings.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            "{{\"line\":{},\"severity\":\"{}\",\"message\":\"{}\"}}",
+            finding.line,
+            finding.severity,
+            escape_json_string(&finding.message)
+        ));
+    }
+    out.push(']');
+    out
+}
+
+fn escape_json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// Lints the text of a sudoku board file and returns every finding, ordered
 /// by line number. A file may hold more than one board: a blank line ends
 /// the current board and starts the next, so boards can be batch-checked
@@ -464,5 +501,38 @@ mod tests {
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].line, 1);
         assert!(findings[0].message.contains("expected 9 rows, found 1"));
+    }
+
+    #[test]
+    fn renders_empty_findings_as_empty_json_array() {
+        assert_eq!(findings_to_json(&[]), "[]");
+    }
+
+    #[test]
+    fn renders_a_finding_as_a_json_object() {
+        let findings = vec![Finding::error(1, "duplicate digit '3' in row")];
+        assert_eq!(
+            findings_to_json(&findings),
+            "[{\"line\":1,\"severity\":\"error\",\"message\":\"duplicate digit '3' in row\"}]"
+        );
+    }
+
+    #[test]
+    fn joins_multiple_findings_with_a_comma() {
+        let findings = vec![Finding::error(1, "a"), Finding::error(2, "b")];
+        assert_eq!(
+            findings_to_json(&findings),
+            "[{\"line\":1,\"severity\":\"error\",\"message\":\"a\"},\
+             {\"line\":2,\"severity\":\"error\",\"message\":\"b\"}]"
+        );
+    }
+
+    #[test]
+    fn escapes_quotes_and_backslashes_in_messages() {
+        let findings = vec![Finding::error(1, "invalid character '\"' near \\here")];
+        assert_eq!(
+            findings_to_json(&findings),
+            "[{\"line\":1,\"severity\":\"error\",\"message\":\"invalid character '\\\"' near \\\\here\"}]"
+        );
     }
 }

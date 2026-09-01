@@ -2,15 +2,25 @@ use std::env;
 use std::fs;
 use std::process::ExitCode;
 
-use sudoku_lint::{lint, Severity};
+use sudoku_lint::{findings_to_json, lint, Severity};
 
 fn main() -> ExitCode {
     let mut args = env::args();
     let program = args.next().unwrap_or_else(|| "sudoku-lint".to_string());
-    let path = match args.next() {
+
+    let mut json = false;
+    let mut path = None;
+    for arg in args {
+        if arg == "--json" {
+            json = true;
+        } else {
+            path = Some(arg);
+        }
+    }
+    let path = match path {
         Some(path) => path,
         None => {
-            eprintln!("usage: {} <board-file>", program);
+            eprintln!("usage: {} [--json] <board-file>", program);
             return ExitCode::FAILURE;
         }
     };
@@ -24,15 +34,17 @@ fn main() -> ExitCode {
     };
 
     let findings = lint(&source);
-    let mut had_error = false;
-    for finding in &findings {
-        if finding.severity == Severity::Error {
-            had_error = true;
+    let had_error = findings.iter().any(|f| f.severity == Severity::Error);
+
+    if json {
+        println!("{}", findings_to_json(&findings));
+    } else {
+        for finding in &findings {
+            println!(
+                "{}:{}: {}: {}",
+                path, finding.line, finding.severity, finding.message
+            );
         }
-        println!(
-            "{}:{}: {}: {}",
-            path, finding.line, finding.severity, finding.message
-        );
     }
 
     if had_error {

@@ -64,6 +64,14 @@ board.txt:1: error: duplicate digit '3' in row
 
 A clean board produces no output and the program exits with status 0.
 
+Pass `--json` to get findings as a JSON array instead, for piping into
+another tool:
+
+```
+$ cargo run -- --json board.txt
+[{"line":1,"severity":"error","message":"duplicate digit '3' in row"}]
+```
+
 ## Library
 
 The linting logic lives in `src/lib.rs` and has no side effects: `lint`
