@@ -138,6 +138,63 @@ pub fn find_box_duplicates(rows: &[Row]) -> Vec<(usize, usize, u8)> {
     duplicates
 }
 
+/// True if a complete, structurally valid board has at least one solution.
+/// Empty cells (`None`) are filled in by backtracking; a board that is
+/// already full just gets checked as-is. Callers are expected to only run
+/// this once row/column/box duplicate checks have already passed, since a
+/// board with a duplicate can never solve and isn't worth the search.
+pub fn is_solvable(rows: &[Row]) -> bool {
+    if rows.len() != SIZE {
+        return false;
+    }
+    let mut grid = [[0u8; SIZE]; SIZE];
+    for (r, row) in rows.iter().enumerate() {
+        for (c, cell) in row.iter().enumerate() {
+            grid[r][c] = cell.unwrap_or(0);
+        }
+    }
+    solve(&mut grid)
+}
+
+fn solve(grid: &mut [[u8; SIZE]; SIZE]) -> bool {
+    for r in 0..SIZE {
+        for c in 0..SIZE {
+            if grid[r][c] != 0 {
+                continue;
+            }
+            for digit in 1..=9u8 {
+                if is_safe(grid, r, c, digit) {
+                    grid[r][c] = digit;
+                    if solve(grid) {
+                        return true;
+                    }
+                    grid[r][c] = 0;
+                }
+            }
+            return false;
+        }
+    }
+    true
+}
+
+fn is_safe(grid: &[[u8; SIZE]; SIZE], row: usize, col: usize, digit: u8) -> bool {
+    for i in 0..SIZE {
+        if grid[row][i] == digit || grid[i][col] == digit {
+            return false;
+        }
+    }
+    let box_row = (row / 3) * 3;
+    let box_col = (col / 3) * 3;
+    for r in box_row..box_row + 3 {
+        for c in box_col..box_col + 3 {
+            if grid[r][c] == digit {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// Renders findings as a JSON array, one object per finding with `line`,
 /// `severity`, and `message` fields. Kept here rather than in `main.rs` so it
 /// stays covered by the same string-in, string-out tests as the rest of the
@@ -263,6 +320,11 @@ fn lint_board(lines: &[(usize, &str)]) -> Vec<Finding> {
                 col + 1
             ),
         ));
+    }
+
+    if findings.is_empty() && !is_solvable(&parsed_rows) {
+        let last_line = lines.last().map_or(1, |(line_number, _)| *line_number);
+        findings.push(Finding::error(last_line, "board has no valid solution"));
     }
 
     // Row findings and the "wrong row count" finding are already produced in
@@ -403,6 +465,55 @@ mod tests {
     #[test]
     fn clean_board_has_no_findings() {
         assert!(lint(CLEAN_BOARD).is_empty());
+    }
+
+    #[test]
+    fn a_solved_board_is_solvable() {
+        let rows: Vec<Row> = CLEAN_BOARD
+            .lines()
+            .map(|line| parse_row(line).unwrap())
+            .collect();
+        assert!(is_solvable(&rows));
+    }
+
+    #[test]
+    fn an_empty_board_is_solvable() {
+        let empty_row = parse_row(".........").unwrap();
+        let rows: Vec<Row> = vec![empty_row; SIZE];
+        assert!(is_solvable(&rows));
+    }
+
+    // Row 0 fills cols 0-7 with 1-8, leaving only col 8 open, which needs a
+    // 9 to complete the row. Row 1 places a 9 in that same column, so the
+    // one open cell in row 0 can never take the digit it needs: no given
+    // conflicts with another, but no completion exists either.
+    const UNSOLVABLE_BOARD: &str = "\
+12345678.
+........9
+.........
+.........
+.........
+.........
+.........
+.........
+.........
+";
+
+    #[test]
+    fn a_board_with_no_solution_is_rejected() {
+        let rows: Vec<Row> = UNSOLVABLE_BOARD
+            .lines()
+            .map(|line| parse_row(line).unwrap())
+            .collect();
+        assert!(!is_solvable(&rows));
+    }
+
+    #[test]
+    fn lint_flags_an_unsolvable_board() {
+        let findings = lint(UNSOLVABLE_BOARD);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].line, 9);
+        assert!(findings[0].message.contains("no valid solution"));
     }
 
     #[test]

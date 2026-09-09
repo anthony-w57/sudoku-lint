@@ -95,3 +95,5 @@ for finding in &findings {
 - no digit repeats within a single row
 - no digit repeats within a single column
 - no digit repeats within a single 3x3 box
+- a structurally clean board has at least one valid solution, checked by
+  backtracking
