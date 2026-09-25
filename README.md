@@ -32,6 +32,29 @@ from that format.
 Nine rows are expected, each exactly nine characters: `1`-`9` for a filled
 cell, `.` or `0` for an empty one.
 
+A board whose first row is 16 characters wide is treated as a 16x16 variant
+with 4x4 boxes instead. Cells above 9 are written as the letters `A`-`G`
+(`A` is 10, `G` is 16, case insensitive):
+
+```
+123456789ABCDEFG
+56789ABCDEFG1234
+9ABCDEFG12345678
+DEFG123456789ABC
+23456789ABCDEFG1
+6789ABCDEFG12345
+ABCDEFG123456789
+EFG123456789ABCD
+3456789ABCDEFG12
+789ABCDEFG123456
+BCDEFG123456789A
+FG123456789ABCDE
+456789ABCDEFG123
+89ABCDEFG1234567
+CDEFG123456789AB
+G123456789ABCDEF
+```
+
 A file can hold more than one board. A blank line ends the current board and
 starts the next, so a whole batch of puzzles pulled from the same source can
 be checked in one pass:
@@ -89,11 +112,16 @@ for finding in &findings {
 
 - a file may hold multiple boards, separated by blank lines, each checked on
   its own
-- each board has exactly nine rows (ignoring `#` comments)
-- each row is exactly nine characters
-- each character is a digit `1`-`9`, a `.`, or a `0`
+- a board is treated as 9x9 (3x3 boxes) unless its first row is 16
+  characters wide, in which case it's checked as the 16x16 variant (4x4
+  boxes) instead
+- each board has exactly nine rows for the 9x9 variant, sixteen for the
+  16x16 one (ignoring `#` comments)
+- each row matches that width
+- each character is a valid digit for the board's size (`1`-`9`, plus
+  `A`-`G` for 16x16), a `.`, or a `0`
 - no digit repeats within a single row
 - no digit repeats within a single column
-- no digit repeats within a single 3x3 box
+- no digit repeats within a single box
 - a structurally clean board has at least one valid solution, checked by
   backtracking
